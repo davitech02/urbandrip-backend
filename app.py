@@ -27,7 +27,8 @@ def create_app():
                 "http://localhost:5176",
                 "http://127.0.0.1:5176",
                 "http://localhost:5177",
-                "http://127.0.0.1:5177"
+                "http://127.0.0.1:5177",
+                "https://urbandrip-app.vercel.app"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"]
