@@ -2,21 +2,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from database import db, bcrypt, jwt
-from functools import wraps
+from decorators import admin_required
 import os
-
-# Admin required decorator
-def admin_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        verify_jwt_in_request()
-        from models import User
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-        if not user or user.role != 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
-        return fn(*args, **kwargs)
-    return wrapper
 
 def create_app():
     app = Flask(__name__)

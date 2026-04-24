@@ -3,7 +3,7 @@ from database import db
 from models import Visitor
 from datetime import datetime, timedelta
 from sqlalchemy import func
-from app import admin_required
+from decorators import admin_required
 
 visitors_bp = Blueprint('visitors', __name__)
 

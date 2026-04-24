@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from database import db
 from models import Product
-from app import admin_required
+from decorators import admin_required
 import os
 from werkzeug.utils import secure_filename
 

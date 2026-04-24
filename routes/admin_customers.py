@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from database import db
 from models import User, Order
-from app import admin_required
+from decorators import admin_required
 from sqlalchemy import func
 
 admin_customers_bp = Blueprint('admin_customers', __name__)

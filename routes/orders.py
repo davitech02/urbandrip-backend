@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import db
 from models import Order, OrderItem, Product
-from app import admin_required
+from decorators import admin_required
 import json
 from datetime import datetime
 

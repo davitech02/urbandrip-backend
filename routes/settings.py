@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from database import db
 from models import Settings, DiscountCode
-from app import admin_required
+from decorators import admin_required
 
 settings_bp = Blueprint('settings', __name__)
 
