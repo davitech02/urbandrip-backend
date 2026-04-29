@@ -4,6 +4,7 @@ from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from database import db, bcrypt, jwt
 from decorators import admin_required
 import os
+import re
 
 def create_app():
     app = Flask(__name__)
@@ -14,24 +15,40 @@ def create_app():
     app.config['JWT_SECRET_KEY'] = 'urbandrip-secret-key-2024'
     app.config['SECRET_KEY'] = 'urbandrip-flask-secret'
 
-    # CORS
+    # CORS - Allow localhost and any Vercel deployment
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+        "http://localhost:5176",
+        "http://127.0.0.1:5176",
+        "http://localhost:5177",
+        "http://127.0.0.1:5177",
+        "https://urbandrip-app.vercel.app",
+        r"https://.*\.vercel\.app",  # Allow any Vercel deployment
+    ]
+
+    def cors_origin_matcher(origin):
+        """Check if origin matches allowed patterns"""
+        if origin in allowed_origins:
+            return True
+        # Check regex patterns
+        for pattern in allowed_origins:
+            if pattern.startswith('r"') and pattern.endswith('"'):
+                regex_pattern = pattern[2:-1]
+                if re.match(regex_pattern, origin or ""):
+                    return True
+        return False
+
     CORS(app, resources={
         r"/api/*": {
-            "origins": [
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:5174",
-                "http://127.0.0.1:5174",
-                "http://localhost:5175",
-                "http://127.0.0.1:5175",
-                "http://localhost:5176",
-                "http://127.0.0.1:5176",
-                "http://localhost:5177",
-                "http://127.0.0.1:5177",
-                "https://urbandrip-app.vercel.app"
-            ],
+            "origins": allowed_origins,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
+            "allow_headers": ["Content-Type", "Authorization"],
+            "max_age": 3600
         }
     })
 

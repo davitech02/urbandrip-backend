@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify
-from flask_cors import cross_origin
 from database import db, bcrypt
 from models import User
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
@@ -8,7 +7,6 @@ from datetime import datetime, timedelta
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST', 'OPTIONS'])
-@cross_origin(origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 def register():
     try:
         data = request.get_json()
@@ -65,7 +63,6 @@ def register():
 
 
 @auth_bp.route('/login', methods=['POST', 'OPTIONS'])
-@cross_origin(origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 def login():
     try:
         data = request.get_json()
@@ -108,7 +105,6 @@ def login():
 
 @auth_bp.route('/me', methods=['GET'])
 @jwt_required()
-@cross_origin(origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 def me():
     try:
         user_id = get_jwt_identity()
@@ -120,7 +116,6 @@ def me():
         return jsonify({'error': str(e)}), 500
 
 @auth_bp.route('/logout', methods=['POST', 'OPTIONS'])
-@cross_origin(origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 def logout():
     # Token is handled client-side, just return success
     return jsonify({"msg": "Logged out successfully"}), 200
