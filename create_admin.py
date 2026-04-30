@@ -23,7 +23,7 @@ with app.app_context():
             full_name="ADMIN",
             email="theadmin@gmail.com",
             phone="08000000000",
-            password=hashed_password,
+            password_hash=hashed_password,
             role="admin",
             is_active=True
         )

@@ -117,6 +117,30 @@ def create_app():
     with app.app_context():
         db.create_all()
         print("Database tables created successfully")
+        
+        # Ensure admin user exists
+        admin_user = User.query.filter_by(email="theadmin@gmail.com").first()
+        if not admin_user:
+            hashed_password = bcrypt.generate_password_hash("admin1234").decode('utf-8')
+            admin_user = User(
+                full_name="ADMIN",
+                email="theadmin@gmail.com",
+                phone="08000000000",
+                password_hash=hashed_password,
+                role="admin",
+                is_active=True
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+            print("✅ Admin user created successfully")
+            print(f"📧 Email: theadmin@gmail.com")
+            print(f"🔑 Password: admin1234")
+        else:
+            # Ensure admin has admin role
+            if admin_user.role != 'admin':
+                admin_user.role = 'admin'
+                db.session.commit()
+                print("✅ Admin role updated")
 
     # CLI Commands
     @app.cli.command()
