@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from database import db, bcrypt, jwt
@@ -14,6 +14,9 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = 'urbandrip-secret-key-2024'
     app.config['SECRET_KEY'] = 'urbandrip-flask-secret'
+    
+    # Ensure uploads folder exists
+    os.makedirs('static/uploads', exist_ok=True)
 
     # CORS - Allow localhost and any Vercel deployment
     allowed_origins = [
@@ -63,7 +66,6 @@ def create_app():
     from routes.products import products_bp
     from routes.visitors import visitors_bp
     from routes.settings import settings_bp
-    from routes.admin_products import admin_products_bp
     from routes.admin_customers import admin_customers_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -71,7 +73,6 @@ def create_app():
     app.register_blueprint(products_bp, url_prefix='/api/products')
     app.register_blueprint(visitors_bp, url_prefix='/api/visitors')
     app.register_blueprint(settings_bp, url_prefix='/api')
-    app.register_blueprint(admin_products_bp, url_prefix='/api/admin/products')
     app.register_blueprint(admin_customers_bp, url_prefix='/api/admin/customers')
 
     # Import models to ensure they are registered with SQLAlchemy
@@ -94,6 +95,14 @@ def create_app():
             }), 200
         except Exception as e:
             return jsonify({'status': 'error', 'database': str(e)}), 500
+
+    # Serve uploaded files
+    @app.route('/static/uploads/<filename>', methods=['GET'])
+    def serve_upload(filename):
+        try:
+            return send_from_directory('static/uploads', filename)
+        except Exception as e:
+            return jsonify({'error': 'File not found'}), 404
 
     # Verify admin user route (temporary for testing)
     @app.route('/api/admin/verify', methods=['GET'])
