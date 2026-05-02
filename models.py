@@ -40,12 +40,12 @@ class Product(db.Model):
     original_price = db.Column(db.Float, nullable=True)
     badge = db.Column(db.String(50), nullable=True)  # 'NEW', 'SALE', or None
     description = db.Column(db.Text, nullable=True)
-    sizes = db.Column(db.JSON, default=list)  # JSON array like ['S', 'M', 'L', 'XL']
+    sizes = db.Column(db.Text, default='[]')  # JSON array stored as string
     stock_quantity = db.Column(db.Integer, default=0)
-    images = db.Column(db.JSON, default=list)  # JSON array of image URLs
+    images = db.Column(db.Text, default='[]')  # JSON array stored as string
     material = db.Column(db.String(200), nullable=True)
     care_instructions = db.Column(db.Text, nullable=True)
-    is_active = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -60,13 +60,14 @@ class Product(db.Model):
             'original_price': self.original_price,
             'badge': self.badge,
             'description': self.description,
-            'sizes': self.sizes,
+            'sizes': json.loads(self.sizes) if isinstance(self.sizes, str) else self.sizes or [],
             'stock_quantity': self.stock_quantity,
-            'images': self.images,
+            'images': json.loads(self.images) if isinstance(self.images, str) else self.images or [],
             'material': self.material,
             'care_instructions': self.care_instructions,
-            'is_active': self.is_active,
-            'created_at': self.created_at.isoformat()
+            'is_active': bool(self.is_active),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class Order(db.Model):

@@ -4,6 +4,8 @@ from database import db
 from models import Product
 from decorators import admin_required
 import os
+import json
+import time
 from datetime import datetime
 
 products_bp = Blueprint('products', __name__)
@@ -25,21 +27,14 @@ def ensure_upload_folder():
 def get_products():
     """Get all active products - public endpoint"""
     try:
-        category = request.args.get('category')
-        
-        query = Product.query.filter_by(is_active=True)
-        
-        if category:
-            query = query.filter_by(category=category)
-        
-        products = query.all()
-        
+        products = Product.query.filter_by(is_active=True).all()
         return jsonify({
-            'success': True,
-            'products': [p.to_dict() for p in products]
+            'products': [p.to_dict() for p in products],
+            'total': len(products)
         }), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Get products error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @products_bp.route('/<int:id>', methods=['GET'])
 def get_product(id):
@@ -50,12 +45,9 @@ def get_product(id):
         if not product.is_active:
             return jsonify({'error': 'Product not found'}), 404
         
-        return jsonify({
-            'success': True,
-            'product': product.to_dict()
-        }), 200
+        return jsonify(product.to_dict()), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
+        return jsonify({'error': str(e)}), 404
 
 # ============= ADMIN ENDPOINTS =============
 
@@ -65,13 +57,10 @@ def get_all_products():
     """Get all products (including inactive) - admin only"""
     try:
         products = Product.query.all()
-        
-        return jsonify({
-            'success': True,
-            'products': [p.to_dict(include_inactive=True) for p in products]
-        }), 200
+        return jsonify([p.to_dict(include_inactive=True) for p in products]), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Get all products error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @products_bp.route('/create', methods=['POST'])
 @admin_required
@@ -81,85 +70,102 @@ def create_product():
         ensure_upload_folder()
         
         # Handle both JSON and FormData
-        if request.is_json:
-            data = request.get_json()
-        else:
+        if request.content_type and 'multipart/form-data' in request.content_type:
             data = request.form.to_dict()
-        
+            files = request.files
+        else:
+            data = request.get_json() or {}
+            files = None
+
         # Validate required fields
-        required_fields = ['name', 'category', 'price', 'description']
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({'error': f'{field} is required'}), 400
+        if not data.get('name'):
+            return jsonify({'error': 'Product name is required'}), 400
+        if not data.get('category'):
+            return jsonify({'error': 'Category is required'}), 400
+        if not data.get('price'):
+            return jsonify({'error': 'Price is required'}), 400
+
+        # Type conversions
+        name = str(data.get('name', '')).strip()
+        category = str(data.get('category', '')).strip()
+        price = float(data.get('price', 0))
         
-        try:
-            price = float(data.get('price', 0))
-            if price <= 0:
-                return jsonify({'error': 'Price must be greater than 0'}), 400
-        except ValueError:
-            return jsonify({'error': 'Price must be a valid number'}), 400
+        original_price_raw = data.get('original_price')
+        original_price = float(original_price_raw) if original_price_raw and original_price_raw != '' else None
         
-        # Handle stock quantity
+        badge = str(data.get('badge')) if data.get('badge') and data.get('badge') != 'None' else None
+        description = str(data.get('description', '')).strip()
+        material = str(data.get('material', '')).strip() if data.get('material') else None
+        care_instructions = str(data.get('care_instructions', '')).strip() if data.get('care_instructions') else None
+        
         try:
             stock_quantity = int(data.get('stock_quantity', 0))
-        except ValueError:
+        except (ValueError, TypeError):
             stock_quantity = 0
-        
-        # Handle images
-        images = []
-        
-        # Image from URL in form data
-        if data.get('image_url'):
-            images.append(data.get('image_url'))
-        
-        # Image file upload
-        if 'image' in request.files:
-            file = request.files['image']
+
+        # Fix sizes — must be stored as JSON string in database
+        sizes_raw = data.get('sizes', '[]')
+        if isinstance(sizes_raw, str):
+            try:
+                sizes_list = json.loads(sizes_raw)
+                sizes = json.dumps(sizes_list)
+            except:
+                sizes = json.dumps([])
+        else:
+            sizes = json.dumps(sizes_raw if isinstance(sizes_raw, list) else [])
+
+        # Fix is_active boolean
+        is_active_raw = data.get('is_active', True)
+        if isinstance(is_active_raw, str):
+            is_active = is_active_raw.lower() in ['true', '1', 'yes']
+        else:
+            is_active = bool(is_active_raw)
+
+        # Handle image upload
+        images_list = []
+        if files and 'image' in files:
+            file = files['image']
             if file and file.filename and allowed_file(file.filename):
-                filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
+                filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                # Create URL based on environment
-                image_url = f"{os.getenv('BACKEND_URL', 'http://localhost:5000')}/static/uploads/{filename}"
-                images.append(image_url)
+                image_url = f"http://localhost:5000/static/uploads/{filename}"
+                images_list.append(image_url)
+        elif data.get('image_url'):
+            images_list.append(str(data.get('image_url')))
         
-        # Handle sizes
-        sizes = data.get('sizes', [])
-        if isinstance(sizes, str):
-            try:
-                import json
-                sizes = json.loads(sizes)
-            except:
-                sizes = [sizes]
-        
+        images = json.dumps(images_list)
+
         # Create product
-        product = Product(
-            name=data.get('name'),
-            category=data.get('category'),
+        new_product = Product(
+            name=name,
+            category=category,
             price=price,
-            original_price=data.get('original_price'),
-            badge=data.get('badge'),
-            description=data.get('description'),
-            sizes=sizes if isinstance(sizes, list) else [],
-            stock_quantity=stock_quantity,
+            original_price=original_price,
+            badge=badge,
+            description=description,
+            sizes=sizes,
             images=images,
-            material=data.get('material'),
-            care_instructions=data.get('care_instructions'),
-            is_active=data.get('is_active', True)
+            material=material,
+            care_instructions=care_instructions,
+            stock_quantity=stock_quantity,
+            is_active=is_active
         )
-        
-        db.session.add(product)
+
+        db.session.add(new_product)
         db.session.commit()
-        
+
         return jsonify({
-            'success': True,
             'message': 'Product created successfully',
-            'product': product.to_dict()
+            'product': new_product.to_dict()
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Create product error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to create product: {str(e)}'}), 500
 
 @products_bp.route('/<int:id>', methods=['PUT'])
 @admin_required
@@ -170,76 +176,87 @@ def update_product(id):
         ensure_upload_folder()
         
         # Handle both JSON and FormData
-        if request.is_json:
-            data = request.get_json()
-        else:
+        if request.content_type and 'multipart/form-data' in request.content_type:
             data = request.form.to_dict()
+            files = request.files
+        else:
+            data = request.get_json() or {}
+            files = None
         
-        # Update fields
+        # Update string fields
         if data.get('name'):
-            product.name = data.get('name')
+            product.name = str(data.get('name')).strip()
         if data.get('category'):
-            product.category = data.get('category')
+            product.category = str(data.get('category')).strip()
+        if data.get('description'):
+            product.description = str(data.get('description')).strip()
+        
+        # Update numeric fields
         if data.get('price'):
             product.price = float(data.get('price'))
         if data.get('original_price'):
             product.original_price = float(data.get('original_price'))
-        if data.get('badge') is not None:
-            product.badge = data.get('badge')
-        if data.get('description'):
-            product.description = data.get('description')
-        if data.get('material') is not None:
-            product.material = data.get('material')
-        if data.get('care_instructions') is not None:
-            product.care_instructions = data.get('care_instructions')
-        if 'is_active' in data:
-            product.is_active = data.get('is_active') in [True, 'true', '1', 'True']
-        
-        # Handle stock_quantity
         if data.get('stock_quantity'):
             product.stock_quantity = int(data.get('stock_quantity'))
         
-        # Handle sizes
+        # Update optional string fields
+        if data.get('badge'):
+            product.badge = str(data.get('badge'))
+        if data.get('material'):
+            product.material = str(data.get('material')).strip()
+        if data.get('care_instructions'):
+            product.care_instructions = str(data.get('care_instructions')).strip()
+        
+        # Update sizes
         if data.get('sizes'):
-            sizes = data.get('sizes')
-            if isinstance(sizes, str):
+            sizes_raw = data.get('sizes')
+            if isinstance(sizes_raw, str):
                 try:
-                    import json
-                    sizes = json.loads(sizes)
+                    sizes_list = json.loads(sizes_raw)
+                    product.sizes = json.dumps(sizes_list)
                 except:
-                    sizes = [sizes]
-            product.sizes = sizes if isinstance(sizes, list) else []
+                    product.sizes = json.dumps([])
+            else:
+                product.sizes = json.dumps(sizes_raw if isinstance(sizes_raw, list) else [])
+        
+        # Update is_active
+        if 'is_active' in data:
+            is_active_raw = data.get('is_active')
+            if isinstance(is_active_raw, str):
+                product.is_active = is_active_raw.lower() in ['true', '1', 'yes']
+            else:
+                product.is_active = bool(is_active_raw)
         
         # Handle new image upload
-        if 'image' in request.files:
-            file = request.files['image']
+        if files and 'image' in files:
+            file = files['image']
             if file and file.filename and allowed_file(file.filename):
-                filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
+                filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                image_url = f"{os.getenv('BACKEND_URL', 'http://localhost:5000')}/static/uploads/{filename}"
-                if not product.images:
-                    product.images = []
-                product.images.append(image_url)
+                image_url = f"http://localhost:5000/static/uploads/{filename}"
+                images_list = json.loads(product.images) if product.images else []
+                images_list.append(image_url)
+                product.images = json.dumps(images_list)
         
         # Handle image URL
         if data.get('image_url'):
-            if not product.images:
-                product.images = []
-            product.images.append(data.get('image_url'))
+            images_list = json.loads(product.images) if product.images else []
+            images_list.append(str(data.get('image_url')))
+            product.images = json.dumps(images_list)
         
         product.updated_at = datetime.utcnow()
         db.session.commit()
         
         return jsonify({
-            'success': True,
             'message': 'Product updated successfully',
             'product': product.to_dict()
         }), 200
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Update product error: {str(e)}")
+        return jsonify({'error': f'Failed to update product: {str(e)}'}), 500
 
 @products_bp.route('/<int:id>', methods=['DELETE'])
 @admin_required
@@ -247,19 +264,15 @@ def delete_product(id):
     """Soft delete product - admin only"""
     try:
         product = Product.query.get_or_404(id)
-        
-        # Soft delete
         product.is_active = False
         db.session.commit()
         
-        return jsonify({
-            'success': True,
-            'message': 'Product deleted successfully'
-        }), 200
+        return jsonify({'message': 'Product deleted successfully'}), 200
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Delete product error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @products_bp.route('/upload-image', methods=['POST'])
 @admin_required
@@ -279,23 +292,22 @@ def upload_image():
         if not allowed_file(file.filename):
             return jsonify({'error': 'File type not allowed. Use PNG, JPG, JPEG, GIF, or WEBP'}), 400
         
-        filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
+        filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
         
-        # Return the full image URL
-        image_url = f"{os.getenv('BACKEND_URL', 'http://localhost:5000')}/static/uploads/{filename}"
+        image_url = f"http://localhost:5000/static/uploads/{filename}"
         
         return jsonify({
-            'success': True,
             'message': 'Image uploaded successfully',
-            'image_url': image_url
+            'image_url': image_url,
+            'success': True
         }), 200
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Upload image error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-# Serve uploaded files
 @products_bp.route('/../static/uploads/<filename>', methods=['GET'])
 def serve_upload(filename):
     """Serve uploaded images"""
