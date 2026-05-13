@@ -279,33 +279,48 @@ def delete_product(id):
 def upload_image():
     """Upload product image - admin only"""
     try:
+        print("[UPLOAD] Starting image upload...")
+        print(f"[UPLOAD] Request headers: {dict(request.headers)}")
+        
         ensure_upload_folder()
         
         if 'image' not in request.files:
+            print("[UPLOAD] ERROR: No 'image' field in request.files")
+            print(f"[UPLOAD] Available fields: {list(request.files.keys())}")
             return jsonify({'error': 'No image provided'}), 400
         
         file = request.files['image']
+        print(f"[UPLOAD] File received: {file.filename if file else 'None'}")
         
         if not file or not file.filename:
+            print("[UPLOAD] ERROR: File is empty or has no filename")
             return jsonify({'error': 'No file selected'}), 400
         
         if not allowed_file(file.filename):
+            print(f"[UPLOAD] ERROR: File type not allowed: {file.filename}")
             return jsonify({'error': 'File type not allowed. Use PNG, JPG, JPEG, GIF, or WEBP'}), 400
         
         filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
+        print(f"[UPLOAD] File saved to: {filepath}")
         
-        image_url = f"http://localhost:5000/static/uploads/{filename}"
+        # Return relative URL that works with any base URL
+        image_url = f"/static/uploads/{filename}"
         
-        return jsonify({
+        response = {
             'message': 'Image uploaded successfully',
+            'url': image_url,
             'image_url': image_url,
             'success': True
-        }), 200
+        }
+        print(f"[UPLOAD] SUCCESS: Returning response: {response}")
+        return jsonify(response), 200
         
     except Exception as e:
-        print(f"Upload image error: {str(e)}")
+        print(f"[UPLOAD] EXCEPTION: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @products_bp.route('/../static/uploads/<filename>', methods=['GET'])

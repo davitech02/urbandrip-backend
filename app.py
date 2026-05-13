@@ -67,6 +67,7 @@ def create_app():
     from routes.visitors import visitors_bp
     from routes.settings import settings_bp
     from routes.admin_customers import admin_customers_bp
+    from routes.admin_products import admin_products_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(orders_bp, url_prefix='/api/orders')
@@ -74,6 +75,7 @@ def create_app():
     app.register_blueprint(visitors_bp, url_prefix='/api/visitors')
     app.register_blueprint(settings_bp, url_prefix='/api')
     app.register_blueprint(admin_customers_bp, url_prefix='/api/admin/customers')
+    app.register_blueprint(admin_products_bp, url_prefix='/api/admin/products')
 
     # Import models to ensure they are registered with SQLAlchemy
     from models import User, Product, Order, Visitor, Settings, DiscountCode
@@ -82,6 +84,28 @@ def create_app():
     def handle_options():
         if request.method == 'OPTIONS':
             return jsonify({}), 200
+
+    # Error handlers - ensure all responses are JSON
+    @app.errorhandler(400)
+    def bad_request(error):
+        return jsonify({'error': 'Bad request', 'details': str(error)}), 400
+
+    @app.errorhandler(401)
+    def unauthorized(error):
+        return jsonify({'error': 'Unauthorized', 'details': str(error)}), 401
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return jsonify({'error': 'Forbidden', 'details': str(error)}), 403
+
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({'error': 'Not found', 'details': str(error)}), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        print(f"Internal server error: {str(error)}")
+        return jsonify({'error': 'Internal server error', 'details': str(error)}), 500
 
     # Health check route
     @app.route('/api/health', methods=['GET'])
@@ -121,6 +145,61 @@ def create_app():
                 'exists': False,
                 'message': 'Admin user not found'
             }), 404
+
+    # Admin dashboard stats aggregation route
+    @app.route('/api/admin/stats', methods=['GET'])
+    @admin_required
+    def get_admin_stats():
+        """Get aggregated admin dashboard statistics"""
+        try:
+            from datetime import datetime, timedelta
+            from sqlalchemy import func
+            
+            # Get total products (active and inactive)
+            total_products = Product.query.count()
+            active_products = Product.query.filter_by(is_active=True).count()
+            
+            # Get orders stats
+            total_orders = Order.query.count()
+            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            orders_today = Order.query.filter(Order.created_at >= today).count()
+            
+            # Get revenue stats
+            successful_orders = Order.query.filter_by(payment_status='successful').all()
+            total_revenue = sum(order.total_amount for order in successful_orders)
+            revenue_today = sum(order.total_amount for order in successful_orders if order.created_at >= today)
+            
+            # Get customer stats
+            total_customers = User.query.filter(User.role != 'admin').count()
+            
+            # Get visitor stats
+            total_visitors = Visitor.query.count()
+            visitors_today = Visitor.query.filter(Visitor.timestamp >= today).count()
+            
+            return jsonify({
+                'products': {
+                    'total': total_products,
+                    'active': active_products,
+                    'inactive': total_products - active_products
+                },
+                'orders': {
+                    'total': total_orders,
+                    'today': orders_today
+                },
+                'revenue': {
+                    'total': round(total_revenue, 2),
+                    'today': round(revenue_today, 2)
+                },
+                'customers': {
+                    'total': total_customers
+                },
+                'visitors': {
+                    'total': total_visitors,
+                    'today': visitors_today
+                }
+            }), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     # Create all tables
     with app.app_context():
