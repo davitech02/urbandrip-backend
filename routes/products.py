@@ -129,7 +129,8 @@ def create_product():
                 filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                image_url = f"http://localhost:5000/static/uploads/{filename}"
+                host_url = request.host_url.rstrip('/')
+                image_url = f"{host_url}/static/uploads/{filename}"
                 images_list.append(image_url)
         elif data.get('image_url'):
             images_list.append(str(data.get('image_url')))
@@ -234,7 +235,8 @@ def update_product(id):
                 filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                image_url = f"http://localhost:5000/static/uploads/{filename}"
+                host_url = request.host_url.rstrip('/')
+                image_url = f"{host_url}/static/uploads/{filename}"
                 images_list = json.loads(product.images) if product.images else []
                 images_list.append(image_url)
                 product.images = json.dumps(images_list)
@@ -274,53 +276,41 @@ def delete_product(id):
         print(f"Delete product error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@products_bp.route('/upload-image', methods=['POST'])
+@products_bp.route('/upload-image', methods=['POST', 'OPTIONS'])
 @admin_required
 def upload_image():
     """Upload product image - admin only"""
     try:
-        print("[UPLOAD] Starting image upload...")
-        print(f"[UPLOAD] Request headers: {dict(request.headers)}")
-        
-        ensure_upload_folder()
-        
         if 'image' not in request.files:
-            print("[UPLOAD] ERROR: No 'image' field in request.files")
-            print(f"[UPLOAD] Available fields: {list(request.files.keys())}")
-            return jsonify({'error': 'No image provided'}), 400
-        
+            return jsonify({'error': 'No image file provided'}), 400
+
         file = request.files['image']
-        print(f"[UPLOAD] File received: {file.filename if file else 'None'}")
-        
-        if not file or not file.filename:
-            print("[UPLOAD] ERROR: File is empty or has no filename")
+
+        if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
+
         if not allowed_file(file.filename):
-            print(f"[UPLOAD] ERROR: File type not allowed: {file.filename}")
             return jsonify({'error': 'File type not allowed. Use PNG, JPG, JPEG, GIF, or WEBP'}), 400
-        
-        filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(filepath)
-        print(f"[UPLOAD] File saved to: {filepath}")
-        
-        # Return relative URL that works with any base URL
-        image_url = f"/static/uploads/{filename}"
-        
-        response = {
+
+        import time
+        from werkzeug.utils import secure_filename
+
+        filename = f"{int(time.time() * 1000)}_{secure_filename(file.filename)}"
+        upload_folder = os.path.join(os.getcwd(), 'static', 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
+
+        image_url = f"{request.host_url}static/uploads/{filename}"
+
+        return jsonify({
             'message': 'Image uploaded successfully',
             'url': image_url,
-            'image_url': image_url,
-            'success': True
-        }
-        print(f"[UPLOAD] SUCCESS: Returning response: {response}")
-        return jsonify(response), 200
-        
+            'filename': filename
+        }), 200
+
     except Exception as e:
-        print(f"[UPLOAD] EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"Image upload error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @products_bp.route('/../static/uploads/<filename>', methods=['GET'])

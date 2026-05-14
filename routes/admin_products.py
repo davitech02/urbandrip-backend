@@ -117,7 +117,8 @@ def create_product():
                 filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                image_url = f"http://localhost:5000/static/uploads/{filename}"
+                host_url = request.host_url.rstrip('/')
+                image_url = f"{host_url}/static/uploads/{filename}"
                 images_list.append(image_url)
         elif data.get('image_url'):
             images_list.append(str(data.get('image_url')))
@@ -225,7 +226,8 @@ def update_product(product_id):
                 filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                image_url = f"http://localhost:5000/static/uploads/{filename}"
+                host_url = request.host_url.rstrip('/')
+                image_url = f"{host_url}/static/uploads/{filename}"
                 images_list = json.loads(product.images) if product.images else []
                 images_list.append(image_url)
                 product.images = json.dumps(images_list)
